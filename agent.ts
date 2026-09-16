@@ -20,6 +20,21 @@ type CatalogModel = {
 	health?: { status?: string };
 };
 
+type RawEntry = Record<string, unknown>;
+
+function normalize(raw: RawEntry): CatalogModel {
+	return {
+		name: String(raw.name ?? raw.id ?? ""),
+		category: raw.category as string | undefined,
+		output_modalities: raw.output_modalities as string[] | undefined,
+		input_modalities: raw.input_modalities as string[] | undefined,
+		supported_endpoints: raw.supported_endpoints as string[] | undefined,
+		context_length: raw.context_length as number | undefined,
+		pricing: raw.pricing as Record<string, string> | undefined,
+		health: raw.health as { status?: string } | undefined,
+	};
+}
+
 function priceOf(m: CatalogModel): number {
 	const p = m.pricing ?? {};
 	const prompt = Number(p.promptTextTokens ?? NaN);
@@ -159,8 +174,9 @@ export default async function agent({ request, pollinations }: AgentContext): Pr
 
 	const catalogRes = await pollinations("/v1/models?status=all");
 	if (!catalogRes.ok) throw new Error(`Catalog fetch failed (${catalogRes.status})`);
-	const catalog = (await catalogRes.json()) as { data?: CatalogModel[] } | CatalogModel[];
-	const models = Array.isArray(catalog) ? catalog : (catalog.data ?? []);
+	const catalog = (await catalogRes.json()) as { data?: RawEntry[] } | RawEntry[];
+	const raw = Array.isArray(catalog) ? catalog : (catalog.data ?? []);
+	const models = raw.map(normalize).filter((m) => m.name.length > 0);
 	const ladder = pickLadder(models, endpoint, body);
 	if (ladder.length === 0) throw new Error("No text models in catalog");
 
